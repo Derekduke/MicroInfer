@@ -45,7 +45,8 @@ void* microinfer_malloc(uint32_t size)
         if(microinfer_buf_size == 0) //未分配静态内存，提醒需要事先分配
             MICROINFER_LOG("please set static buffer first");
         else //计算出仍需要分配的资源大小，提醒需要增加的内存大小
-            MICROINFER_LOG("No memory (%d) not big enough, please increase buffer size: (%d)", (uint32_t)microinfer_buf_size , (uint32_t)(size+microinfer_buf_curr-microinfer_buf_size);
+                      MICROINFER_LOG("memory (%d) not big enough, please increase buffer size: (%d)", 
+                        (uint32_t)microinfer_buf_size , (uint32_t)(size+microinfer_buf_curr-microinfer_buf_size);
         return NULL;
     }
 }
