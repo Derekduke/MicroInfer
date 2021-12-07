@@ -7,8 +7,11 @@
 #ifndef __MICROINFER_PORT_H_
 #define __MICROINFER_PORT_H_
 
-#define microinfer_malloc(n)    malloc(n)
-#define microinfer_free(n)      free(n)
+#include <stdlib.h>
+#include <stdio.h>
+
+//#define microinfer_malloc(n)    malloc(n)
+//#define microinfer_free(n)      free(n)
 
 #define microinfer_memset(a,b,c)     memset(a,b,c)
 #define microinfer_memcpy(dst,src,len)  memcpy(dst,src,len)
