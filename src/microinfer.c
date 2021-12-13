@@ -146,6 +146,7 @@ microinfer_model_t* model_init(microinfer_model_t* model)
     }
     else
     {
+        printf("model memset\n");
         microinfer_memset(m , 0 , sizeof(microinfer_model_t)); //若已经实例化过，则清零重新赋值
     }
     m->hook = model_hook;

@@ -4,7 +4,7 @@
 
 microinfer_model_t *model;
 static int8_t microinfer_input_data[784];
-
+static uint8_t static_buff[1024];
 microinfer_model_t* microinfer_model_create(void)
 {
     printf("input layer\n");
@@ -34,6 +34,7 @@ microinfer_model_t* microinfer_model_create(void)
 
 int main()
 {
+    microinfer_set_buf(static_buff , sizeof(static_buff)/sizeof(uint8_t));
     model = microinfer_model_create();
     //model_run(model);
     return 0;

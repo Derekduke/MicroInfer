@@ -35,4 +35,8 @@ microinfer_layer_t* Input(microinfer_3d_shape_t input_shape , void* p_buf)
 
     layer->shape = input_shape;
     layer->buf = p_buf;
+
+    microinfer_shape_data_t dim[3] = { input_shape.h, input_shape.w, input_shape.c };
+
+    return (microinfer_layer_t*)layer;
 }
