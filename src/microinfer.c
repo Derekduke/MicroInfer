@@ -79,8 +79,6 @@ void* microinfer_mem(uint32_t size)
 }
 /*---------------------------------------------------------------------*/
 
-
-
 static microinfer_layer_hook_t* allocate_hook(microinfer_layer_io_t* io)
 {
     microinfer_layer_hook_t* hook;
@@ -133,7 +131,7 @@ static microinfer_layer_t* model_hook(microinfer_layer_t* curr , microinfer_laye
     curr_in_io = allocate_io(curr->in); //为当前层分配实体输入IO
 
     pre_out_io_hook->io = curr_in_io; //将上一层输出io的hook，指向当前层输入io
-    curr_in_io->hook.io = last->out; //将本层输入io的hook，指向上一层输出io
+    curr_in_io->hook.io = pre->out; //将本层输入io的hook，指向上一层输出io
 
     return curr;
 }

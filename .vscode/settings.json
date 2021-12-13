@@ -1,5 +1,10 @@
 {
     "files.associations": {
-        "microinfer.h": "c"
+        "microinfer.h": "c",
+        "microinfer_port.h": "c",
+        "microinfer_input.h": "c",
+        "stdio.h": "c",
+        "stdint.h": "c",
+        "microinfer_layers.h": "c"
     }
 }
