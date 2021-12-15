@@ -13,9 +13,11 @@
 
 #include "microinfer_port.h"
 
-//#include "layers/microinfer_input.h"
-
 #define MICROINFER_ALIGN    (sizeof(char*))
+
+#define microinfer_qformat_param_t int32_t // this should match the backend, need a better way to do it. 
+#define microinfer_shape_t uint16_t
+#define microinfer_shape_data_t uint16_t
 
 typedef enum
 {
@@ -36,11 +38,17 @@ typedef enum
 
 }microinfer_layer_type_t;
 
+typedef enum
+{
+	MICROINFER_QTYPE_PER_TENSOR = 0,
+	MICROINFER_QTYPE_PER_AXIS = 1
+} microinfer_qtype_t;
+
 typedef struct _microinfer_layer_io_t microinfer_layer_io_t;
 typedef struct _microinfer_layer_hook_t microinfer_layer_hook_t;
 typedef struct _microinfer_layer_t microinfer_layer_t;
-
 typedef struct _microinfer_tensor_t microinfer_tensor_t;
+typedef struct _microinfer_model_t microinfer_model_t;
 
 struct _microinfer_layer_hook_t
 {
@@ -72,10 +80,6 @@ struct _microinfer_model_t
     microinfer_layer_t* tail;
     microinfer_layer_t* (*hook)(microinfer_layer_t* curr , microinfer_layer_t* pre);  
 };
-typedef struct _microinfer_model_t microinfer_model_t;
-
-#define microinfer_shape_t uint16_t
-#define microinfer_shape_data_t uint16_t
 
 typedef struct _microinfer_3d_shape_t
 {
@@ -84,15 +88,23 @@ typedef struct _microinfer_3d_shape_t
 
 struct _microinfer_tensor_t
 {
-	void* p_data;			// value
-	microinfer_shape_data_t *dim; // dimension of this tensor
-	//nnom_qformat_param_t *q_dec;	// number of decimal bit for Q format (scale)
-	//nnom_qformat_param_t *q_offset;	// offset for each channel
-	//nnom_qtype_t qtype;			// the quantisation type	
+	void* p_data;					// value
+	microinfer_shape_data_t *dim; 	// dimension of this tensor
+	microinfer_qformat_param_t *q_dec;	// number of decimal bit for Q format (scale)
+	microinfer_qformat_param_t *q_offset;	// offset for each channel
+	microinfer_qtype_t qtype;			// the quantisation type	
 	uint8_t num_dim;			// the number of dimension
 	uint8_t bitwidth;			// the data bit width, only support 8bit now
 };
 
+
+
 microinfer_model_t* model_init(microinfer_model_t* model);
+
+uint32_t microinfer_alignto(uint32_t value , uint32_t alignment);
+void microinfer_set_buf(void* buf , uint32_t size);
+void* microinfer_malloc(uint32_t size);
+void* microinfer_free(void* p);
+void* microinfer_mem(uint32_t size);
 
 #endif

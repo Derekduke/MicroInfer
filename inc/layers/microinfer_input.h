@@ -15,7 +15,7 @@ typedef struct _microinfer_input_layer
 {
     microinfer_layer_t super;
     microinfer_3d_shape_t shape;
-
+    microinfer_qformat_param_t dec_bit;
     void* buf;
 }microinfer_input_layer_t;
 

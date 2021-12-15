@@ -7,11 +7,13 @@ static int8_t microinfer_input_data[784];
 static uint8_t static_buff[1024];
 microinfer_model_t* microinfer_model_create(void)
 {
-    printf("input layer\n");
+    MICROINFER_LOG("model create start\n");
 	static microinfer_model_t model;
 	microinfer_layer_t* layer[15];
-	model_init(&model);    
+	model_init(&model);   
+    MICROINFER_LOG("model init over\n"); 
     layer[0] = Input(shape(28, 28, 1), microinfer_input_data);
+    MICROINFER_LOG("input over\n");
     /*
 	layer[1] = model.hook(Conv2D(12, kernel(3, 3), stride(1, 1), PADDING_SAME, &conv2d_1_w, &conv2d_1_b), layer[0]);
 	layer[2] = model.active(act_relu(), layer[1]);
