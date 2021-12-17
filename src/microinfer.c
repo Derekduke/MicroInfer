@@ -71,7 +71,7 @@ void* microinfer_mem(uint32_t size)
     return ptr;
 }
 /*---------------------------------------------------------------------*/
-
+//为指定层的in或者out IO 去分配实体的hook，考虑同一个IO存在多个hook情况，用单向链表连接
 static microinfer_layer_hook_t* allocate_hook(microinfer_layer_io_t* io)
 {
     microinfer_layer_hook_t* hook;
@@ -92,7 +92,7 @@ static microinfer_layer_hook_t* allocate_hook(microinfer_layer_io_t* io)
         return hook->next;
     }
 }
-
+//为指定层分配实体的IN或者OUT IO，考虑一个层存在多个IN IO或OUT IO的情况，用单项链表连接
 static microinfer_layer_io_t* allocate_io(microinfer_layer_io_t* io)
 {
     if(io == NULL) return NULL;
@@ -112,7 +112,7 @@ static microinfer_layer_io_t* allocate_io(microinfer_layer_io_t* io)
         return io->next;
     }
 }
-
+//功能API，用于上下层之间的双向连接，pre_layer.out_io.hook->curr_layer.in_io // curr_layer.in_io.hook->pre_layer.out_io
 static microinfer_layer_t* model_hook(microinfer_layer_t* curr , microinfer_layer_t* pre)
 {
     microinfer_layer_io_t* curr_in_io;
@@ -128,7 +128,6 @@ static microinfer_layer_t* model_hook(microinfer_layer_t* curr , microinfer_laye
 
     return curr;
 }
-
 //模型初始化，分配模型描述符的空间，指定操作函数
 microinfer_model_t* model_init(microinfer_model_t* model)
 {
@@ -141,10 +140,11 @@ microinfer_model_t* model_init(microinfer_model_t* model)
     {
         microinfer_memset(m , 0 , sizeof(microinfer_model_t)); //若已经实例化过，则清零重新赋值
     }
-    m->hook = model_hook;
+    //指定类操作函数
+    m->hook = model_hook; 
     return m;
 }
-
+//从模型描述符中，分配已经实例化过的内存块描述符（并不是真正的内存）
 static microinfer_mem_block_t *allocate_block(microinfer_mem_block_t *list)
 {
 	microinfer_mem_block_t *free = NULL;
@@ -160,11 +160,11 @@ static microinfer_mem_block_t *allocate_block(microinfer_mem_block_t *list)
         MICROINFER_LOG("\nERROR! No enough memory block for parallel buffers, please increase the 'NNOM_BLOCK_NUM' in 'nnom_port.h'\n");
         return NULL;
     }
-
+    //将第一个没有所属者的内存块（不代表没有被用过，可能是用了又回收了），作为最优分配目标
 	free = &list[idx];
 	return free;
 }
-
+//回收内存块，只收回所属权限，但实际上并不修改其它属性或清空内存，下次再被用到的时候再改
 static void release_block(microinfer_mem_block_t *block)
 {
 	if (block->owners > 0)
@@ -172,11 +172,10 @@ static void release_block(microinfer_mem_block_t *block)
 	if (block->owners == 0)
 		block->state = MICROINFER_BUF_EMPTY;
 }
-
+//回收指定层的所有IN IO内存块或者OUT IO内存块；仅回收内存块，并不回收描述符
 static void release_input_mem(microinfer_layer_t *layer)
 {
 	microinfer_layer_io_t *in;
-	// release all input of buf
 	in = layer->in;
 	while (in != NULL)
 	{
@@ -184,16 +183,15 @@ static void release_input_mem(microinfer_layer_t *layer)
 		in = in->next;
 	}
 }
-
+//回收指定层用于计算而分配的内存块
 static void release_comp_mem(microinfer_layer_t *layer)
 {
-	// release computational buf if exist
 	if (layer->comp != NULL)
 	{
 		release_block(layer->comp->mem);
 	}
 }
-
+//计算指定层的所有IN IO或OUT IO的tensor大小（理解为对应shape的数据buff，需要内存块总和的大小）
 static uint32_t io_mem_size(microinfer_layer_io_t *io)
 {
 	uint32_t size = 0;
@@ -207,24 +205,22 @@ static uint32_t io_mem_size(microinfer_layer_io_t *io)
 	}
 	return size;
 }
-
+//遍历内存块描述符，获得所有内存块的大小
 uint32_t mem_analysis_result(microinfer_model_t *m)
 {
 	uint32_t index;
 	uint32_t total_mem = 0;
 	MICROINFER_LOG("\n Memory cost by each block:\n ");
-	// print size of memory blocks
 	for (index = 0; index < MICROINFER_BLOCK_NUM; index++)
 	{
 		total_mem += m->blocks[index].size;
 		MICROINFER_LOG("blk_%d:%d  ", index, (uint32_t)(m->blocks[index].size));
 	}
-	// size of total memory cost by networks buffer
 	MICROINFER_LOG("\n\n Memory will cost by all blocks: %d bytes\n", total_mem);
     
 	return total_mem;
 }
-
+//将划分的一大块主内存，按照各个内存块事先计算的所需大小做划分（设置对应内存块的指针）
 microinfer_status_t block_mem_set(microinfer_model_t *m, void *buf)
 {
 	uint32_t index;
@@ -239,7 +235,7 @@ microinfer_status_t block_mem_set(microinfer_model_t *m, void *buf)
 	}
 	return NN_SUCCESS;
 }
-
+//将指定模型的每一层的IN IO和OUT IO的tensor（数据描述符）的数据指针和给IO对应实际分配的内存块连接
 microinfer_status_t tensor_mem_set(microinfer_model_t *m)
 {
 	microinfer_layer_t *layer = m->head;
@@ -265,7 +261,7 @@ microinfer_status_t tensor_mem_set(microinfer_model_t *m)
 	}
 	return NN_SUCCESS;
 }
-
+//输出每一层的名字，激活类型，输出shape，输入中间输出的buff大小，内存块生存周期
 static void print_layer_info(microinfer_layer_t *layer, uint32_t layer_count)
 {
     uint32_t in_size = io_mem_size(layer->in);
@@ -294,7 +290,7 @@ static void print_layer_info(microinfer_layer_t *layer, uint32_t layer_count)
 
     MICROINFER_LOG("- (%4d,%4d,%4d,)", (uint32_t)in_size, (uint32_t)out_size,(uint32_t) comp_size);
 }
-
+//输出各个内存块最终确认的所需内存大小
 static void print_memory_block_info(microinfer_mem_block_t *block_pool)
 {
 	// show the memory blocks's lifetime (number of owners)
@@ -310,10 +306,9 @@ static void print_memory_block_info(microinfer_mem_block_t *block_pool)
 	}
 	MICROINFER_LOG("\n");
 }
-
+//遍历各层，计算各层输入输出中间的tensor，计算内存块所需数量和大小，目前仅支持顺序模型结构的单输入和单输出
 microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t *curr, microinfer_mem_block_t *block_pool, uint32_t *layer_count)
 {
-    
     uint32_t mem_size = 0;
     microinfer_layer_t* layer = curr;
     microinfer_layer_io_t* in;
@@ -333,28 +328,28 @@ microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t
     while(layer)
     {
         in = layer->in;
-        if(in->hook.io == NULL)
+        if(in->hook.io == NULL)//Input层
         {
-            if(in->mem == NULL)
+            if(in->mem == NULL)//输入层未经过内存初始化
             {
                 in_blk = allocate_block(block_pool);
                 in_blk->owners += 1;
-                mem_size = microinfer_alignto(tensor_size(in->tensor) , MICROINFER_ALIGN);
-                in_blk->size = mem_size > in_blk->size ? mem_size : in_blk->size;
+                mem_size = microinfer_alignto(tensor_size(in->tensor) , MICROINFER_ALIGN);//根据tensor的shape去计算所需内存块的大小
+                in_blk->size = mem_size > in_blk->size ? mem_size : in_blk->size;//和内存块原来的size值相比较（可能之前被用过），取较大值
                 in->mem = in_blk;
                 in->mem->state = MICROINFER_BUF_FILLED;
             }
         }
-        else
+        else//非Input层
         {
             while(in != NULL)
             {
-                in->mem = in->hook.io->mem;
+                in->mem = in->hook.io->mem;//该层IN IO输入的内存块，一定等同于，上一层OUT IO输出的内存块
                 in = in->next;
             }
         }
         
-        layer->build(layer);
+        layer->build(layer);//运行构造模型的函数，确定该层输出和计算的tensor大小
 
         if(layer->comp != NULL)
         {
@@ -369,14 +364,14 @@ microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t
         if(layer->out == NULL)
             return NN_SUCCESS;
         
-        if(layer->out->next == NULL && layer->out->hook.next == NULL)
+        if(layer->out->next == NULL && layer->out->hook.next == NULL) //单输出层 连接到 单输入层的情况
         {
             if(layer->in->type == MICROINFER_TENSOR_BUF_NULL || layer->out->type == MICROINFER_TENSOR_BUF_NULL)
-            {
-                layer->out->mem = layer->in->mem;
+            { //这个层的类型，是一个单buff，不需要其他计算（比如input）
+                layer->out->mem = layer->in->mem; //
                 print_memory_block_info(block_pool);
             }
-            else
+            else //这个层的类型，需要额外的中间运算，需要更多的buff（比如卷积）
             {
                 out_blk = allocate_block(block_pool);
                 if(out_blk == NULL)
@@ -386,19 +381,19 @@ microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t
                 mem_size = microinfer_alignto(tensor_size(layer->out->tensor) , MICROINFER_ALIGN);
                 out_blk->size = mem_size > out_blk->size ? mem_size : out_blk->size;
                 layer->out->mem = out_blk;
-
                 print_memory_block_info(block_pool);
+                //除了输出层，输入和中间层的内存块全部回收
 				release_input_mem(layer);
 				release_comp_mem(layer);                
             }
         }
 		if (layer->out->hook.io == NULL)
 			return NN_SUCCESS;
-        layer = layer->out->hook.io->owner;
+        layer = layer->out->hook.io->owner; //通过钩子找到下一层
     }
     return NN_SUCCESS;
 }
-
+//执行模型计算图构建的API函数，根据层的属性，逐层根据数据流向去计算输入、输出、中间层的tensor，并按最少内存块使用的原则（近似贪心算法），分配实体内存
 microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* input , microinfer_layer_t* output)
 {
     uint32_t buf_size;
@@ -414,18 +409,18 @@ microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* in
 	MICROINFER_LOG("Start compiling model...\n\n");
 	MICROINFER_LOG("Layer(#)         Activation    output shape    mem(in, out, middle)   mem blk lifetime\n");
 	MICROINFER_LOG("--------------------------------------------------------------------------------------\n");
-    compile_layers(m->head , m->head , m->blocks , &layer_num);
+    compile_layers(m->head , m->head , m->blocks , &layer_num); //计算模型总共所需要的内存块数量和大小
 	MICROINFER_LOG("--------------------------------------------------------------------------------------\n");
 
-    buf_size =  mem_analysis_result(m);
-	buf = microinfer_mem(buf_size);
+    buf_size =  mem_analysis_result(m); //输出各个内存块的大小，返回需要的内存总和
+	buf = microinfer_mem(buf_size); //先按照内存综合分配一大块内存（有助于减少碎片化）
 	if (buf == NULL)
 	{
 		MICROINFER_LOG("ERROR: No enough memory for network buffer, required %d bytes\n", (uint32_t)buf_size);
 		return NN_NO_MEMORY;
 	}
     MICROINFER_LOG("\n Memory already cost by MircoInfer: %d bytes\n", microinfer_buf_curr);
-    block_mem_set(m, buf);
-    tensor_mem_set(m);
+    block_mem_set(m, buf); //切割大内存，分配给各个内存块描述符
+    tensor_mem_set(m); //将该层的IO tensor指向内存块,相当于是数据形状的描述和存储数据的内存绑定
     return NN_SUCCESS;
 }
