@@ -36,13 +36,12 @@ microinfer_tensor_t* tensor_cpy_attr(microinfer_tensor_t* des, microinfer_tensor
 		size = sizeof(microinfer_qformat_param_t) * tensor_get_num_channel(src);
 	else
 		size = sizeof(microinfer_qformat_param_t);
-		
+	
 	// bit
 	des->bitwidth = src->bitwidth;
 	// copy quantisation parameters
 	microinfer_memcpy(des->q_dec, src->q_dec, size);
 	microinfer_memcpy(des->q_offset, src->q_offset, size);
-
 	// copy number of dimension
 	des->num_dim = src->num_dim;
 	microinfer_memcpy(des->dim, src->dim, src->num_dim * sizeof(microinfer_shape_data_t));
@@ -65,7 +64,7 @@ microinfer_tensor_t* new_tensor(microinfer_qtype_t type , uint32_t num_dim , uin
     t = microinfer_mem(microinfer_alignto(sizeof(microinfer_tensor_t) , MICROINFER_ALIGN)+num_dim*sizeof(microinfer_shape_data_t)+q_len*sizeof(microinfer_qformat_param_t)*2);
     if(t == NULL)
         return t;
-    t->dim = (microinfer_shape_data_t*)((uint8_t*)t+sizeof(microinfer_shape_data_t));
+    t->dim = (microinfer_shape_data_t*)((uint8_t*)t+sizeof(microinfer_tensor_t));
     t->q_dec = (microinfer_qformat_param_t*)((uint8_t*)t->dim+num_dim*sizeof(microinfer_shape_data_t));
     t->q_offset = (microinfer_qformat_param_t*)((uint8_t*)t->q_dec+q_len*sizeof(microinfer_qformat_param_t));
     t->num_dim = num_dim;

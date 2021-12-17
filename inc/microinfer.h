@@ -15,9 +15,58 @@
 
 #define MICROINFER_ALIGN    (sizeof(char*))
 
+
+#define MICROINFER_TENSOR_BUF_NULL     (0)	// This buffer is not in used
+#define MICROINFER_TENSOR_BUF_TEMP     (1)  // The memory in IO is temporary occupided, can be reused by other layer once the computation is done.
+#define MICROINFER_TENSOR_BUF_RESERVED (2)  // the mem is reserve for this layer only (not to be reused by other layer.
+
+#define MICROINFER_MAJORVERSION     0             
+#define MICROINFER_SUBVERSION       0              
+#define MICROINFER_REVISION         1 
+
+#define MICROINFER_BUF_EMPTY   (0)
+#define MICROINFER_BUF_FILLED  (1)
+
 #define microinfer_qformat_param_t int32_t // this should match the backend, need a better way to do it. 
 #define microinfer_shape_t uint16_t
 #define microinfer_shape_data_t uint16_t
+
+#define DEFUALT_LAYER_NAMES \
+	{                       \
+		"Unknown",          \
+			"Base",			\
+			"Input",        \
+			"Output",       \
+			"Conv2D",       \
+			"DW_Conv2D",    \
+			"Conv2DTrsp",    \
+			"BatchNorm",	\
+			"Dense",        \
+			"ZeroPad",	    \
+			"Cropping",     \
+			"RNN",          \
+			"Activation",   \
+			"ReLU",         \
+			"Leaky_ReLU",	\
+			"Adv_ReLU",	    \
+			"Sigmoid",      \
+			"Tanh",         \
+			"Softmax",      \
+			"MaxPool",      \
+			"GL_MaxPool",	\
+			"AvgPool",      \
+			"GL_AvgPool",	\
+			"SumPool",		\
+			"GL_SumPool",	\
+			"UpSample",		\
+			"Flatten",      \
+			"Lambda",       \
+			"Concat",       \
+			"Add",          \
+			"Sub",          \
+			"Mult",         \
+	}
+extern const char default_layer_names[][12];
 
 typedef enum
 {
@@ -34,7 +83,39 @@ typedef enum
 
 typedef enum
 {
-	MICROINFER_INPUT
+	MICROINFER_INVALID = 0,
+	MICROINFER_BASE,
+	MICROINFER_INPUT,
+	MICROINFER_OUTPUT,
+	MICROINFER_CONV_2D,
+	MICROINFER_DW_CONV_2D,
+	MICROINFER_CONV2D_TRANS,
+	MICROINFER_BATCHNORM,
+	MICROINFER_DENSE,
+	MICROINFER_ZERO_PADDING,
+	MICROINFER_CROPPING,
+	MICROINFER_RNN,
+	MICROINFER_ACTIVATION,
+	MICROINFER_RELU,
+	MICROINFER_LEAKY_RELU,
+	MICROINFER_ADV_RELU,
+	MICROINFER_SIGMOID,
+	MICROINFER_TANH,
+	MICROINFER_SOFTMAX,
+	MICROINFER_MAXPOOL,
+	MICROINFER_GLOBAL_MAXPOOL,
+	MICROINFER_AVGPOOL,
+	MICROINFER_GLOBAL_AVGPOOL,
+	MICROINFER_SUMPOOL,
+	MICROINFER_GLOBAL_SUMPOOL,
+	MICROINFER_UPSAMPLE,
+	MICROINFER_FLATTEN,
+	MICROINFER_LAMBDA,
+	MICROINFER_CONCAT,
+	MICROINFER_ADD,
+	MICROINFER_SUB,
+	MICROINFER_MULT,
+	MICROINFER_TYPE_MAX
 
 }microinfer_layer_type_t;
 
@@ -44,11 +125,39 @@ typedef enum
 	MICROINFER_QTYPE_PER_AXIS = 1
 } microinfer_qtype_t;
 
+typedef enum
+{
+    ACT_UNKNOWN = 0,
+	ACT_RELU,
+	ACT_LEAKY_RELU,
+	ACT_ADV_RELU,
+	ACT_TANH,
+	ACT_SIGMOID,
+    ACT_HARD_TANH,
+    ACT_HARD_SIGMOID
+} microinfer_activation_type_t;
+
+#define ACTIVATION_NAMES \
+	{                    \
+        "Unknown",          \
+		"ReLU",          \
+		"LkyReLU",		 \
+		"AdvReLU",		\
+		"TanH",      \
+		"Sigmoid",   \
+        "HrdTanH",      \
+		"HrdSigd",   \
+	}
+extern const char default_activation_names[][8];
+
 typedef struct _microinfer_layer_io_t microinfer_layer_io_t;
 typedef struct _microinfer_layer_hook_t microinfer_layer_hook_t;
 typedef struct _microinfer_layer_t microinfer_layer_t;
 typedef struct _microinfer_tensor_t microinfer_tensor_t;
 typedef struct _microinfer_model_t microinfer_model_t;
+typedef struct _microinfer_mem_block_t microinfer_mem_block_t;
+typedef struct _microinfer_buf microinfer_buf_t;
+typedef struct _microinfer_activation_t microinfer_activation_t;
 
 struct _microinfer_layer_hook_t
 {
@@ -60,8 +169,10 @@ struct _microinfer_layer_io_t
 {
 	microinfer_layer_hook_t hook;		  // for example: (layer->out)--hook--(layer->in)
 	microinfer_tensor_t* tensor;
+	microinfer_mem_block_t* mem;
     microinfer_layer_io_t *next; 		  // point to auxilary I/O (multiple I/O layer)
 	microinfer_layer_t *owner;		      // which layer owns this io.
+	uint8_t type;
 };
 
 struct _microinfer_layer_t
@@ -69,16 +180,42 @@ struct _microinfer_layer_t
 	microinfer_status_t (*run)(microinfer_layer_t* layer);
 	microinfer_status_t (*build)(microinfer_layer_t* layer);
 	microinfer_status_t (*free)(microinfer_layer_t* layer);
+	microinfer_buf_t* comp;
+	microinfer_activation_t* actail;
 	microinfer_layer_type_t type;
 	microinfer_layer_io_t *in;	  // IO buff, last*layer, states
 	microinfer_layer_io_t *out;   // IO buff, next*layer, states
+};
+
+struct _microinfer_activation_t
+{
+	microinfer_status_t (*run)(struct _microinfer_activation_t *act);
+	microinfer_tensor_t *tensor;
+	microinfer_activation_type_t type;
+};
+
+struct _microinfer_mem_block_t
+{
+	void *blk;		// data block location
+	uint32_t size;	// the maximum size for this block
+	uint8_t owners; // how many layers own this block
+	uint8_t state;  // empty? filled? for static nn, currently only used in compiling
+};
+
+struct _microinfer_buf
+{
+	microinfer_mem_block_t *mem;
+	uint32_t size;
+	uint8_t type;
 };
 
 struct _microinfer_model_t
 {
     microinfer_layer_t* head;
     microinfer_layer_t* tail;
-    microinfer_layer_t* (*hook)(microinfer_layer_t* curr , microinfer_layer_t* pre);  
+    microinfer_layer_t* (*hook)(microinfer_layer_t* curr , microinfer_layer_t* pre);
+
+	microinfer_mem_block_t blocks[MICROINFER_BLOCK_NUM];
 };
 
 typedef struct _microinfer_3d_shape_t
@@ -97,14 +234,14 @@ struct _microinfer_tensor_t
 	uint8_t bitwidth;			// the data bit width, only support 8bit now
 };
 
-
-
 microinfer_model_t* model_init(microinfer_model_t* model);
+microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* input , microinfer_layer_t* output);
 
 uint32_t microinfer_alignto(uint32_t value , uint32_t alignment);
 void microinfer_set_buf(void* buf , uint32_t size);
 void* microinfer_malloc(uint32_t size);
 void* microinfer_free(void* p);
 void* microinfer_mem(uint32_t size);
+microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t *curr, microinfer_mem_block_t *block_pool, uint32_t *layer_count);
 
 #endif

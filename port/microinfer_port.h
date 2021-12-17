@@ -7,9 +7,9 @@
 #ifndef __MICROINFER_PORT_H_
 #define __MICROINFER_PORT_H_
 
-//#include <stdlib.h>
-//#include <stdio.h>
-
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 //#define microinfer_malloc(n)    malloc(n)
 //#define microinfer_free(n)      free(n)
 
@@ -17,5 +17,7 @@
 #define microinfer_memcpy(dst,src,len)  memcpy(dst,src,len)
 
 #define MICROINFER_LOG(...)       printf(__VA_ARGS__)
+
+#define MICROINFER_BLOCK_NUM  	(8)
 
 #endif

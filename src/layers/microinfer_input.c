@@ -38,13 +38,17 @@ microinfer_layer_t* Input(microinfer_3d_shape_t input_shape , void* p_buf)
     
     layer->super.type = MICROINFER_INPUT;
     layer->super.run = input_run;
-    //layer->super.build = input_build;
+    layer->super.build = input_build;
+
+	in->type = MICROINFER_TENSOR_BUF_TEMP;
+	out->type = MICROINFER_TENSOR_BUF_NULL;
 
     layer->super.in = io_init(layer , in);
     layer->super.out = io_init(layer , out);
 
     layer->shape = input_shape;
     layer->buf = p_buf;
+    layer->dec_bit = 7;
 
     microinfer_shape_data_t dim[3] = { input_shape.h, input_shape.w, input_shape.c };
     layer->super.in->tensor = new_tensor(MICROINFER_QTYPE_PER_TENSOR , 3 , input_shape.c);

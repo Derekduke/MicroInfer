@@ -5,15 +5,13 @@
 microinfer_model_t *model;
 static int8_t microinfer_input_data[784];
 static uint8_t static_buff[1024];
+
 microinfer_model_t* microinfer_model_create(void)
 {
-    MICROINFER_LOG("model create start\n");
 	static microinfer_model_t model;
 	microinfer_layer_t* layer[15];
 	model_init(&model);   
-    MICROINFER_LOG("model init over\n"); 
     layer[0] = Input(shape(28, 28, 1), microinfer_input_data);
-    MICROINFER_LOG("input over\n");
     /*
 	layer[1] = model.hook(Conv2D(12, kernel(3, 3), stride(1, 1), PADDING_SAME, &conv2d_1_w, &conv2d_1_b), layer[0]);
 	layer[2] = model.active(act_relu(), layer[1]);
@@ -29,8 +27,9 @@ microinfer_model_t* microinfer_model_create(void)
 	layer[12] = model.hook(Dense(10, &dense_2_w, &dense_2_b), layer[11]);
 	layer[13] = model.hook(Softmax(), layer[12]);
 	layer[14] = model.hook(Output(shape(10,1,1), nnom_output_data), layer[13]);
+	*/
 	model_compile(&model, layer[0], layer[14]);
-    */
+    
 	return &model;
 }
 
