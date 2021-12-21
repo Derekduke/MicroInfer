@@ -26,6 +26,44 @@ uint32_t tensor_get_num_channel(microinfer_tensor_t* t)
     return t->dim[t->num_dim-1];
 }
 
+microinfer_tensor_t* tensor_set_attr(microinfer_tensor_t* t, 
+		microinfer_qformat_param_t*dec_bit, microinfer_qformat_param_t *offset, microinfer_shape_data_t* dim, uint32_t num_dim, uint8_t bitwidth)
+{
+	size_t size;
+		
+	// copy dim
+	t->num_dim = num_dim;
+	microinfer_memcpy(t->dim, dim, sizeof(microinfer_shape_data_t) * num_dim);
+	
+	// get the q format data size
+	if(t->qtype == MICROINFER_QTYPE_PER_AXIS)
+		size = sizeof(microinfer_qformat_param_t) * tensor_get_num_channel(t);
+	else
+		size = sizeof(microinfer_qformat_param_t);
+
+	// bitwidth
+	t->bitwidth = bitwidth;
+	// copy the offset and q format
+	microinfer_memcpy(t->q_dec, dec_bit, size);
+	microinfer_memcpy(t->q_offset, offset, size);
+	return t;
+}
+
+// set tensor by value
+microinfer_tensor_t* tensor_set_attr_v(microinfer_tensor_t* t, 
+		microinfer_qformat_param_t dec_bit, microinfer_qformat_param_t offset, microinfer_shape_data_t* dim, uint32_t num_dim, uint8_t bitwidth)
+{
+	// copy dim
+	t->num_dim = num_dim;
+	microinfer_memcpy(t->dim, dim, sizeof(microinfer_shape_data_t) * num_dim);
+	// bitwidth
+	t->bitwidth = bitwidth;
+	// copy the offset and q format
+	*(t->q_dec) = dec_bit;
+	*(t->q_offset) = offset;
+	return t;
+}
+
 microinfer_tensor_t* tensor_cpy_attr(microinfer_tensor_t* des, microinfer_tensor_t* src)
 {
 	uint32_t size;
@@ -78,17 +116,3 @@ void delete_tensor(microinfer_tensor_t* t)
 		microinfer_free(t);
 }
 
-// set tensor by value
-microinfer_tensor_t* tensor_set_attr_v(microinfer_tensor_t* t, 
-		microinfer_qformat_param_t dec_bit, microinfer_qformat_param_t offset, microinfer_shape_data_t* dim, uint32_t num_dim, uint8_t bitwidth)
-{
-	// copy dim
-	t->num_dim = num_dim;
-	microinfer_memcpy(t->dim, dim, sizeof(microinfer_shape_data_t) * num_dim);
-	// bitwidth
-	t->bitwidth = bitwidth;
-	// copy the offset and q format
-	*(t->q_dec) = dec_bit;
-	*(t->q_offset) = offset;
-	return t;
-}

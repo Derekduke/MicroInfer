@@ -5,6 +5,15 @@
         "microinfer_input.h": "c",
         "stdio.h": "c",
         "stdint.h": "c",
-        "microinfer_layers.h": "c"
+        "microinfer_layers.h": "c",
+        "weights.h": "c",
+        "microinfer_tensor.h": "c",
+        "microinfer_dense.h": "c",
+        "microinfer_activation.h": "c",
+        "microinfer_maxpool.h": "c",
+        "microinfer_conv2d.h": "c",
+        "microinfer_softmax.h": "c",
+        "microinfer_local.h": "c",
+        "microinfer_output.h": "c"
     }
 }

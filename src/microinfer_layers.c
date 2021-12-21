@@ -23,6 +23,19 @@ microinfer_3d_shape_t shape(size_t h, size_t w, size_t c)
 	return s;
 }
 
+microinfer_3d_shape_t kernel(size_t h, size_t w)
+{
+	return shape(h, w, 1);
+}
+microinfer_3d_shape_t stride(size_t h, size_t w)
+{
+	return shape(h, w, 1);
+}
+microinfer_3d_shape_t dilation(size_t h, size_t w)
+{
+	return shape(h, w, 1);
+}
+
 microinfer_layer_io_t* io_init(void* owner_layer , microinfer_layer_io_t* io)
 {
     io->owner = (microinfer_layer_t*)owner_layer;

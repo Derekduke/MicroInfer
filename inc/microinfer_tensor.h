@@ -13,3 +13,6 @@ microinfer_tensor_t* new_tensor(microinfer_qtype_t type , uint32_t num_dim , uin
 void delete_tensor(microinfer_tensor_t* t);
 microinfer_tensor_t* tensor_set_attr_v(microinfer_tensor_t* t, 
 		microinfer_qformat_param_t dec_bit, microinfer_qformat_param_t offset, microinfer_shape_data_t* dim, uint32_t num_dim, uint8_t bitwidth);
+microinfer_tensor_t* tensor_set_attr(microinfer_tensor_t* t, 
+		microinfer_qformat_param_t*dec_bit, microinfer_qformat_param_t *offset, microinfer_shape_data_t* dim, uint32_t num_dim, uint8_t bitwidth);
+		

@@ -58,6 +58,7 @@ void* microinfer_malloc(uint32_t size)
 void* microinfer_free(void* p)
 {
     //哪里需要释放内存，待定
+    return NULL;
 }
 //为推理框架的内存使用，分配空间并初始化
 void* microinfer_mem(uint32_t size)
@@ -128,6 +129,14 @@ static microinfer_layer_t* model_hook(microinfer_layer_t* curr , microinfer_laye
 
     return curr;
 }
+
+static microinfer_layer_t *model_active(microinfer_activation_t *act, microinfer_layer_t *target)
+{
+	// simple and easy
+	target->actail = act;
+	return target;
+}
+
 //模型初始化，分配模型描述符的空间，指定操作函数
 microinfer_model_t* model_init(microinfer_model_t* model)
 {
@@ -142,6 +151,7 @@ microinfer_model_t* model_init(microinfer_model_t* model)
     }
     //指定类操作函数
     m->hook = model_hook; 
+    m->active = model_active;
     return m;
 }
 //从模型描述符中，分配已经实例化过的内存块描述符（并不是真正的内存）
@@ -370,6 +380,7 @@ microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t
             { //这个层的类型，是一个单buff，不需要其他计算（比如input）
                 layer->out->mem = layer->in->mem; //
                 print_memory_block_info(block_pool);
+                release_comp_mem(layer);
             }
             else //这个层的类型，需要额外的中间运算，需要更多的buff（比如卷积）
             {
@@ -404,6 +415,15 @@ microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* in
     m->tail = output;
 
     MICROINFER_LOG("MicroInfer Version %d.%d.%d\n" , MICROINFER_MAJORVERSION, MICROINFER_SUBVERSION, MICROINFER_REVISION);
+	#ifdef MICROINFER_USING_CHW
+	    MICROINFER_LOG("Data format: Channel first (CHW)\n");
+	#else
+	    MICROINFER_LOG("Data format: Channel last (HWC)\n");
+	#endif
+	#ifdef MICROINFER_USING_CMSIS_NN
+	   MICROINFER_LOG("Backend optimization: CMSIS-NN\n");
+	#endif
+
     MICROINFER_LOG("Static memory size set to: %d bytes\n", (uint32_t)microinfer_buf_size);
 
 	MICROINFER_LOG("Start compiling model...\n\n");

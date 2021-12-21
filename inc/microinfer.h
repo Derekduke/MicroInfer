@@ -14,7 +14,10 @@
 #include "microinfer_port.h"
 
 #define MICROINFER_ALIGN    (sizeof(char*))
-
+#define q7_t 	int8_t
+#define q15_t 	int16_t
+#define q31_t 	int32_t
+#define q63_t 	int64_t
 
 #define MICROINFER_TENSOR_BUF_NULL     (0)	// This buffer is not in used
 #define MICROINFER_TENSOR_BUF_TEMP     (1)  // The memory in IO is temporary occupided, can be reused by other layer once the computation is done.
@@ -137,6 +140,24 @@ typedef enum
     ACT_HARD_SIGMOID
 } microinfer_activation_type_t;
 
+typedef enum
+{
+	PADDING_VALID = 0,
+	PADDING_SAME
+} microinfer_padding_t;
+
+typedef struct _microinfer_weights
+{
+	const void *p_value;
+	microinfer_qformat_param_t shift;
+} microinfer_weight_t;
+
+typedef struct _nnom_bias
+{
+	const void *p_value;
+	microinfer_qformat_param_t shift;
+} microinfer_bias_t;
+
 #define ACTIVATION_NAMES \
 	{                    \
         "Unknown",          \
@@ -214,7 +235,7 @@ struct _microinfer_model_t
     microinfer_layer_t* head;
     microinfer_layer_t* tail;
     microinfer_layer_t* (*hook)(microinfer_layer_t* curr , microinfer_layer_t* pre);
-
+	microinfer_layer_t *(*active)(microinfer_activation_t *act, microinfer_layer_t *target_layer);	
 	microinfer_mem_block_t blocks[MICROINFER_BLOCK_NUM];
 };
 
