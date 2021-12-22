@@ -50,11 +50,11 @@ IO所拥有的block（用来存放IO中tensor描述的真实内存数据的指�
 
 ### 2.无差异的跨平台统一模型部署框架（部分实现）
 
-已经在我的plugin_imx6ull仓库中实现应用，原本是贡献给RT-Thread操作系统在cortex-a处理器的一个插件，用于在基于RT_Thread的cortex-a7处理器上一键式的部署tensorflow lite模型。思路基本相同，暂时还未合并进这里。
+已经在我的plugin_imx6ull仓库中:https://github.com/Derekduke/plugin_imx6ull 实现应用，原本是贡献给RT-Thread操作系统在cortex-a处理器的一个插件，用于在基于RT_Thread的cortex-a7处理器上一键式的部署tensorflow lite模型。思路基本相同，暂时还未合并进这里。
 
 ### 3.多平台算子调优（部分实现）
 
-已经在我的 tencentos-tiny-with-tflitemicro-and-iot 仓库中实现应用Cortex-m4/m7的DSP资源（实际上是替换CMSIS-NN算子）实现行人识别，暂未将实例整合进来；在Cortex-a上利用NEON指令做加速的Arm Compute Library库移植还有点问题，主要是C++和C的混编链接；还有针对普通算子的调优，如近似卷积算法、循环矩阵乘法等还未实现。
+已经在我的 tencentos-tiny-with-tflitemicro-and-iot 仓库中：https://github.com/Derekduke/tencentos-tiny-with-tflitemicro-and-iot 实现应用Cortex-m4/m7的DSP资源（实际上是替换CMSIS-NN算子）实现行人识别，暂未将实例整合进来；在Cortex-a上利用NEON指令做加速的Arm Compute Library库移植还有点问题，主要是C++和C的混编链接；还有针对普通算子的调优，如近似卷积算法、循环矩阵乘法等还未实现。
 
 ### 4.模型功能创新（待考虑）
 基于这套推理框架做一些有创新型的模型或应用（先测试简单的已有模型）
