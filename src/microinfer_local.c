@@ -273,7 +273,6 @@ void local_softmax_q7(const q7_t *vec_in, const uint32_t dim_vec, q7_t *p_out)
     /* We first search for the maximum */
     for (i = 0; i < dim_vec; i++)
     {
-        printf("softmax input = %d\n" ,vec_in[i]);
         if (vec_in[i] > base)
         {
             base = vec_in[i];
@@ -318,10 +317,6 @@ void local_softmax_q7(const q7_t *vec_in, const uint32_t dim_vec, q7_t *p_out)
         {
             p_out[i] = 0;
         }
-    }
-    for(i=0 ; i<dim_vec ; i++)
-    {
-        printf("softmax output = %d\n" , p_out[i]);
     }
 }
 

@@ -29,11 +29,6 @@ microinfer_status_t maxpool_run(microinfer_layer_t *layer)
 				out_x, out_y,
 				NULL,
 				layer->out->tensor->p_data);
-	    printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[0]);
-        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[1]);
-        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[2]);
-        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[3]);
-        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[4]);
 	return NN_SUCCESS;
 }
 
