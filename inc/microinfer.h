@@ -264,5 +264,7 @@ void* microinfer_malloc(uint32_t size);
 void* microinfer_free(void* p);
 void* microinfer_mem(uint32_t size);
 microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t *curr, microinfer_mem_block_t *block_pool, uint32_t *layer_count);
+microinfer_status_t model_run(microinfer_model_t *m);
+microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, float *prob);
 
 #endif

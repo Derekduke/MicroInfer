@@ -20,9 +20,11 @@ microinfer_status_t dense_build(microinfer_layer_t *layer)
 	// calculate the output tensor q format, only support per tensor quantise now
 	layer->out->tensor->q_dec[0] = layer->in->tensor->q_dec[0] + cl->weight->q_dec[0] - cl->output_rshift[0];
 	// see if the activation will change the q format
-	if(layer->actail) 
+	if(layer->actail)
+	{ 
 		layer->out->tensor->q_dec[0] = act_get_dec_bit(layer->actail->type, layer->out->tensor->q_dec[0]);
-	
+		layer->actail->tensor = layer->out->tensor;
+	}
 	// vec_buffer size: dim_vec (*2, q7->q15) ? I am not sure this is right
 	layer->comp->size = tensor_size(layer->in->tensor)*2;
 
@@ -37,16 +39,14 @@ microinfer_status_t dense_run(microinfer_layer_t *layer)
 	microinfer_dense_layer_t *cl = (microinfer_dense_layer_t *)(layer);
 	microinfer_qformat_param_t bias_shift = cl->bias_lshift[0];			// this is not correct but a temporary fix solution for backward compatibility.
 	microinfer_qformat_param_t output_shift = cl->output_rshift[0];
-
-    /*
-	local_fully_connected_q7(
+	local_fully_connected_q7_opt(
 		layer->in->tensor->p_data,
 		cl->weight->p_data,
 		tensor_size(layer->in->tensor), layer->out->tensor->dim[0],
 		bias_shift, output_shift,
 		cl->bias->p_data,
 		layer->out->tensor->p_data, (q15_t *)(layer->comp->mem->blk));
-    */
+	
 	return result;
 }
 
@@ -55,7 +55,6 @@ microinfer_layer_t *Dense(size_t output_unit, const microinfer_weight_t *w, cons
 	microinfer_dense_layer_t *layer;
 	microinfer_buf_t *comp;
 	microinfer_layer_io_t *in, *out;
-
 	// apply a block memory for all the sub handles.
 	size_t mem_size = sizeof(microinfer_dense_layer_t) + sizeof(microinfer_layer_io_t) * 2 + sizeof(microinfer_buf_t);
 	layer = microinfer_mem(mem_size);

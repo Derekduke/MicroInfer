@@ -23,13 +23,7 @@ microinfer_status_t softmax_build(microinfer_layer_t *layer)
 
 microinfer_status_t softmax_run(microinfer_layer_t *layer)
 {
-	// looks like the new version cause accuracy drop quite a lot. 
-//	#ifdef NNOM_USING_CMSIS_NN
-//	// temporary fixed for mutiple dimension input. 
-//	arm_softmax_q7(layer->in->tensor->p_data, tensor_size(layer->out->tensor), layer->out->tensor->p_data);
-//	#else
-	//local_softmax_q7(layer->in->tensor->p_data, tensor_size(layer->out->tensor), layer->out->tensor->p_data);
-	//#endif
+	local_softmax_q7(layer->in->tensor->p_data, tensor_size(layer->out->tensor), layer->out->tensor->p_data);
 	return NN_SUCCESS;
 }
 

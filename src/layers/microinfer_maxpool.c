@@ -6,7 +6,35 @@
 
 microinfer_status_t maxpool_run(microinfer_layer_t *layer)
 {
+	microinfer_maxpool_layer_t *cl = (microinfer_maxpool_layer_t *)(layer);
 
+	uint16_t out_x, out_y;
+
+	// if global pooling
+	if(layer->out->tensor->num_dim == 1)
+	{
+		out_x = 1; out_y = 1;
+	}
+	else // normal pooling. 
+	{
+		out_x = layer->out->tensor->dim[1]; //W
+		out_y = layer->out->tensor->dim[0]; //h
+	}
+
+		local_maxpool_q7_HWC(layer->in->tensor->p_data, 				
+				layer->in->tensor->dim[1], layer->in->tensor->dim[0], layer->in->tensor->dim[2],
+				cl->kernel.w, cl->kernel.h, 
+				cl->pad.w, cl->pad.h,
+				cl->stride.w, cl->stride.h,
+				out_x, out_y,
+				NULL,
+				layer->out->tensor->p_data);
+	    printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[0]);
+        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[1]);
+        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[2]);
+        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[3]);
+        printf("pool output: %d\n" , ((int8_t*)layer->out->tensor->p_data)[4]);
+	return NN_SUCCESS;
 }
 
 microinfer_status_t maxpool_build(microinfer_layer_t *layer)
@@ -23,8 +51,10 @@ microinfer_status_t maxpool_build(microinfer_layer_t *layer)
 	
 	// see if the activation will change the q format
 	if(layer->actail) 
+	{
 		layer->out->tensor->q_dec[0] = act_get_dec_bit(layer->actail->type, layer->out->tensor->q_dec[0]);
-
+		layer->actail->tensor = layer->out->tensor;
+	}
 	// now we set up the tensor shape, always HWC format
 	if (cl->padding_type == PADDING_SAME)
 	{

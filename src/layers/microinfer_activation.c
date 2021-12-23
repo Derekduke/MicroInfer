@@ -12,7 +12,6 @@
 
 static microinfer_status_t relu_run(microinfer_activation_t* act)
 {
-
     local_relu_q7(act->tensor->p_data, tensor_size(act->tensor));
 	return NN_SUCCESS;
 }

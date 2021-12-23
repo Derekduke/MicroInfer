@@ -132,7 +132,6 @@ static microinfer_layer_t* model_hook(microinfer_layer_t* curr , microinfer_laye
 
 static microinfer_layer_t *model_active(microinfer_activation_t *act, microinfer_layer_t *target)
 {
-	// simple and easy
 	target->actail = act;
 	return target;
 }
@@ -443,4 +442,97 @@ microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* in
     block_mem_set(m, buf); //切割大内存，分配给各个内存块描述符
     tensor_mem_set(m); //将该层的IO tensor指向内存块,相当于是数据形状的描述和存储数据的内存绑定
     return NN_SUCCESS;
+}
+
+microinfer_status_t model_run(microinfer_model_t *m)
+{
+	uint32_t layer_num = 1;
+	microinfer_status_t result;
+	microinfer_layer_t *layer;
+
+	layer = m->head;
+	
+	// using shortcut run
+	while (layer)
+	{
+		// run layer
+		//result = layer_run(layer);
+        result = layer->run(layer);
+        if(layer->actail != NULL)
+        {
+            layer->actail->run(layer->actail);
+        }
+		if (result != NN_SUCCESS)
+		{
+			MICROINFER_LOG("Error: #%d %s layer return error code:%d\n", layer_num, default_layer_names[layer->type], result);
+			return result;
+		}
+		// run callback
+        /*
+		if(m->layer_callback != NULL)
+		{
+			result = m->layer_callback(m, layer);
+			if (result != NN_SUCCESS)
+			{
+				NNOM_LOG("Error: Callback return error code %d at #%d %s layer\n", result, layer_num, default_layer_names[layer->type]);
+				return result;
+			}
+		}
+        */		
+		// check if finished
+		if (layer->out->hook.io == NULL)
+			break;
+		layer = layer->out->hook.io->owner;
+		layer_num++;
+	}
+
+	return NN_SUCCESS;   
+}
+
+microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, float *prob)
+{
+	int32_t max_val, max_index, sum;
+	int8_t *output;
+
+	if (!m)
+		return NN_ARGUMENT_ERROR;
+	model_run(m);
+
+	// get the output memory
+	output = m->tail->out->tensor->p_data;
+
+	// multiple neural output
+	if (tensor_size(m->tail->out->tensor) > 1)
+	{
+		// Top 1
+		max_val = output[0];
+		max_index = 0;
+		sum = max_val;
+		for (uint32_t i = 1; i < tensor_size(m->tail->out->tensor); i++)
+		{
+			if (output[i] > max_val)
+			{
+				max_val = output[i];
+				max_index = i;
+			}
+			sum += output[i];
+		}
+		// send results
+		*label = max_index;
+		if(max_val !=0)
+			*prob = (float)max_val/127.f; 
+		else
+			*prob = 0; 
+	}
+	// single neural output
+	else
+	{
+		*prob = (float)output[0] / 127.f;
+		if (*prob >= 0.5f)
+			*label = 1;
+		else
+			*label = 0;
+	}
+	
+	return NN_SUCCESS;
 }
