@@ -255,8 +255,10 @@ struct _microinfer_tensor_t
 	uint8_t bitwidth;			// the data bit width, only support 8bit now
 };
 
-microinfer_model_t* model_init(microinfer_model_t* model);
+microinfer_model_t* model_create(microinfer_model_t* model);
 microinfer_status_t model_compile(microinfer_model_t* m , microinfer_layer_t* input , microinfer_layer_t* output);
+microinfer_status_t model_run(microinfer_model_t *m);
+microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, float *prob);
 
 uint32_t microinfer_alignto(uint32_t value , uint32_t alignment);
 void microinfer_set_buf(void* buf , uint32_t size);
@@ -264,7 +266,6 @@ void* microinfer_malloc(uint32_t size);
 void* microinfer_free(void* p);
 void* microinfer_mem(uint32_t size);
 microinfer_status_t compile_layers(microinfer_layer_t* first, microinfer_layer_t *curr, microinfer_mem_block_t *block_pool, uint32_t *layer_count);
-microinfer_status_t model_run(microinfer_model_t *m);
-microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, float *prob);
+
 
 #endif

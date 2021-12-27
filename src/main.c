@@ -27,12 +27,12 @@ void print_img(int8_t * buf)
     }
 }
 
-microinfer_model_t* microinfer_model_create(void)
+microinfer_model_t*model_init(void)
 {
 	printf("start\n");
 	static microinfer_model_t model;
 	microinfer_layer_t* layer[15];
-	model_init(&model);   
+	model_create(&model);   
     layer[0] = Input(shape(28, 28, 1), microinfer_input_data);
 	layer[1] = model.hook(Conv2D(12, kernel(3, 3), stride(1, 1), dilation(1,1) , PADDING_SAME, &conv2d_1_w, &conv2d_1_b), layer[0]);
 	layer[2] = model.active(act_relu(), layer[1]);
@@ -59,7 +59,7 @@ int main()
 	float prob;
 	int32_t index = 9;
     microinfer_set_buf(static_buff , sizeof(static_buff)/sizeof(uint8_t));
-    model = microinfer_model_create();
+    model = model_init();
 	print_img((int8_t*)&img[index][0]);
 	memcpy(microinfer_input_data, (int8_t*)&img[index][0], 784);
 	microinfer_predict(model, &predic_label, &prob);

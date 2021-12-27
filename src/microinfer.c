@@ -137,7 +137,7 @@ static microinfer_layer_t *model_active(microinfer_activation_t *act, microinfer
 }
 
 //模型初始化，分配模型描述符的空间，指定操作函数
-microinfer_model_t* model_init(microinfer_model_t* model)
+microinfer_model_t* model_create(microinfer_model_t* model)
 {
     microinfer_model_t* m = model;
     if(m == NULL) //判断模型是否已经初始化过（判断描述符是否已经实例化）
