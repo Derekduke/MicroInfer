@@ -6,7 +6,7 @@
 #include "image.h"
 
 microinfer_model_t *model;
-static int8_t microinfer_input_data[784];
+static int8_t microinfer_input_data[1960];
 static int8_t microinfer_output_data[10];
 static uint8_t static_buff[1024*20];
 
@@ -32,7 +32,8 @@ microinfer_model_t*model_init(void)
 	printf("start\n");
 	static microinfer_model_t model;
 	microinfer_layer_t* layer[15];
-	model_create(&model);   
+	model_create(&model);
+	
     layer[0] = Input(shape(28, 28, 1), microinfer_input_data);
 	layer[1] = model.hook(Conv2D(12, kernel(3, 3), stride(1, 1), dilation(1,1) , PADDING_SAME, &conv2d_1_w, &conv2d_1_b), layer[0]);
 	layer[2] = model.active(act_relu(), layer[1]);
@@ -50,6 +51,14 @@ microinfer_model_t*model_init(void)
 	layer[14] = model.hook(Output(shape(10,1,1), microinfer_output_data), layer[13]);
 	model_compile(&model, layer[0], layer[14]);
     
+    /*
+    layer[0] = Input(shape(49, 40, 1), microinfer_input_data);
+	layer[1] = model.hook(Conv2D(8, kernel(10, 8), stride(2, 2), dilation(1,1) , PADDING_SAME, &conv2d_1_w, &conv2d_1_b), layer[0]);
+	layer[2] = model.active(act_relu(), layer[1]);
+	layer[3] = model.hook(Dense(4, &dense_1_w, &dense_1_b), layer[2]);
+	layer[4] = model.hook(Softmax(), layer[3]);
+	model_compile(&model, layer[0], layer[4]);
+	*/
 	return &model;
 }
 
@@ -57,9 +66,10 @@ int main()
 {
 	uint32_t predic_label;
 	float prob;
-	int32_t index = 9;
+	int32_t index = 5;
     microinfer_set_buf(static_buff , sizeof(static_buff)/sizeof(uint8_t));
     model = model_init();
+	
 	print_img((int8_t*)&img[index][0]);
 	memcpy(microinfer_input_data, (int8_t*)&img[index][0], 784);
 	microinfer_predict(model, &predic_label, &prob);
@@ -67,5 +77,6 @@ int main()
 	printf("Truth label: %d\n", label[index]);
 	printf("Predicted label: %d\n", predic_label);
 	printf("Probability: %d%%\n", (int)(prob*100));
+	
     return 0;
 }

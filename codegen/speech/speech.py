@@ -1,86 +1,13 @@
-'''
-    Copyright (c) 2018-2020
-    Jianjia Ma
-    majianjia@live.com
-
-    SPDX-License-Identifier: Apache-2.0
-
-    Change Logs:
-    Date           Author       Notes
-    2019-02-05     Jianjia Ma   The first version
-
-
-    This file provides:
-    -> fake_quantisation layers which simulate the output quantisation on fixed-point NN models.
-    -> weights/bias quantisation of Convolution and Dense Layer. "weight.h" file generations
-    -> export "testing set" binary data file.
-    -> print output ranges of each layers.
-
-    Currently, this script does not support RNN (type) layers.
-'''
-
-import matplotlib.pyplot as plt
+import os
 import tensorflow as tf
-from tensorflow.keras.layers import InputLayer
+from tensorflow.keras import *
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.layers import *
 from tensorflow.keras.models import Model
+from tensorflow.keras.models import load_model, save_model
+import numpy as np
 
-from sklearn import metrics
-from .fully_connected_opt_weight_generation import *
-import time
-import warnings
-
-""" 
-this is the generate the test set data to a bin file
-bin file can be used to validate the implementation in MCU
-
-"""
-def generate_test_bin(x, y, name='test_data_with_label.bin'):
-    '''
-    this method generate the
-    :param x:  input x data size
-    :param y:  input label (one hot label)
-    :return:
-    '''
-    # quantize input x
-    min_value = np.min(x)
-    max_value = np.max(x)
-
-    int_bits = int(np.ceil(np.log2(max(abs(min_value), abs(max_value)))))
-    dec_bits = 7 - int_bits
-    x = np.round(x*2**dec_bits).astype(np.int8)
-    # get label
-    if(len(y.shape) >1):
-        test_label = np.argwhere(y == 1).astype(np.int8)  # test data
-        test_label = test_label[:, 1]
-    else:
-        test_label = y
-
-    # get data
-    dat = x.astype(dtype="byte")  # test data
-    batch_size = dat.shape[0]     # total pices of data	
-    dat = dat.flatten()           # flatten to get the total size.
-    block_size = int(dat.size / batch_size) # this must be integer but... just to confirm
-
-    # write (label x 128) (data_block x 128)
-    label_batch = 128       # the Y-modem example uses 128 batch
-    with open(name, 'wb') as f:
-        start = 0
-        while start <= (test_label.size - label_batch):
-            test_label[start: start + label_batch].tofile(f)
-            dat[block_size * start: block_size * (start + label_batch)].tofile(f)
-            start += label_batch
-
-        # the rest data
-        if (start < test_label.size):
-            rest_len = test_label.size - start
-            new_labls = test_label[start:]
-            new_labls = np.pad(new_labls, (0, label_batch - rest_len), mode='constant')
-            new_labls.tofile(f)
-            dat[block_size * start:].tofile(f)
-
-    print("binary test file generated:", name)
-    print("test data length:", test_label.size)
-    return
+model_name = 'mnist_simple_trained_model.h5'
 
 def is_shift_layer(layer):
     ''' layer which can change the output encoding'''
@@ -115,175 +42,6 @@ def is_shift_fixed(layer):
         return True
     return  False
 
-def fuse_bn_to_conv(layer):
-    # try to fuse BN layer to convolutional
-    if ('conv' in layer.name) and \
-            ('batch_normalization' in layer._outbound_nodes[0].outbound_layer.name):
-
-        print("fusing batch normalization to", layer.name)
-        bn_layer = layer._outbound_nodes[0].outbound_layer
-        c_w = layer.get_weights()[0]
-        c_b = layer.get_weights()[1]
-        print('original weight max', c_w.max(), 'min', c_w.min())
-        print('original bias max', c_b.max(), 'min', c_b.min())
-        bn_gamma = bn_layer.get_weights()[0]
-        bn_beta = bn_layer.get_weights()[1]
-        bn_mean = bn_layer.get_weights()[2]
-        bn_variance = bn_layer.get_weights()[3]
-
-        if ('conv2d' in layer.name):
-            epsilon = 1e-3  # default epsilon for tf.slim.batch_norm
-            for l in range(c_w.shape[3]):
-                for k in range(c_w.shape[2]):
-                    for j in range(c_w.shape[1]):
-                        for i in range(c_w.shape[0]):
-                            if "depthwise" in layer.name:  # depthwise batchnorm params are ordered differently
-                                c_w[i][j][k][l] *= bn_gamma[k] / np.sqrt(bn_variance[k] + epsilon)
-                            else:
-                                c_w[i][j][k][l] *= bn_gamma[l] / np.sqrt(bn_variance[l] + epsilon)
-
-            if "depthwise" in layer.name:
-                depth_dim = c_w.shape[2]
-            else:
-                depth_dim = c_w.shape[3]
-            for l in range(depth_dim):
-                c_b[l] = (bn_gamma[l] * (c_b[l] - bn_mean[l]) / np.sqrt(bn_variance[l] + epsilon)) + bn_beta[l]
-        # conv1d
-        else:
-            epsilon = 1e-3  # default epsilon for tf.slim.batch_norm
-            for k in range(c_w.shape[2]):
-                for j in range(c_w.shape[1]):
-                    for i in range(c_w.shape[0]):
-                        if "depthwise" in layer.name:  # depthwise batchnorm params are ordered differently
-                            c_w[i][j][k] *= bn_gamma[j] / np.sqrt(bn_variance[j] + epsilon)
-                        else:
-                            c_w[i][j][k] *= bn_gamma[k] / np.sqrt(bn_variance[k] + epsilon)
-
-            if "depthwise" in layer.name:
-                depth_dim = c_w.shape[1]
-            else:
-                depth_dim = c_w.shape[2]
-            for l in range(depth_dim):
-                c_b[l] = (bn_gamma[l] * (c_b[l] - bn_mean[l]) / np.sqrt(bn_variance[l] + epsilon)) + bn_beta[l]
-
-        print('fused weight max', c_w.max(), 'min', c_w.min())
-        print('fused bias max', c_b.max(), 'min', c_b.min())
-        # write the weights back to the layer
-        # after that, the model will be destroyed.. need a better way to pass the new weight
-        layer.set_weights([c_w, c_b])
-
-def generate_weights(model, name='weights.h', format='hwc', shift_list=None):
-    # Quantize weights to 8-bits using (min,max) and write to file
-    f = open(name, 'w')
-    f.write('#include "nnom.h"\n\n')
-    f.close()
-
-    for curr_idx, layer in  enumerate(model.layers):
-        if (not layer.weights):
-            continue
-
-        # before merging bn layer, check if the bn is "legally" after Conv
-        if('batch_normalization' in layer.name) and \
-            ('conv' not in layer.inbound_nodes[0].inbound_layers.name):
-            raise  Exception('Currently only support batch_normalization after conv', layer.name,
-                            layer._inbound_nodes[0].inbound_layers[0].name)
-
-        # try to fuse BN layer to convolutional
-        if ('conv' in layer.name) and \
-            ('batch_normalization' in layer.outbound_nodes[0].outbound_layer.name):
-            fuse_bn_to_conv(layer)
-
-        # generate weights and bias now
-        weight_dec_shift = 0
-        print('weights for layer', layer.name)
-        for var in layer.weights:
-            var_name = str(var.name)
-            if("kernel" in var_name ):
-                var_values = layer.get_weights()[0] # weight
-                print("  weight:", var_name)
-            elif("bias" in var_name):
-                var_values = layer.get_weights()[1] # bias
-                print("  bias: ",var_name)
-            else:
-                continue
-
-            print("  original shape: ", var_values.shape)
-            min_value = np.min(var_values)
-            max_value = np.max(var_values)
-
-            int_bits = int(np.ceil(np.log2(max(abs(min_value), abs(max_value)))))
-            dec_bits = 7 - int_bits
-            print("  dec bit", dec_bits)
-            bSameAsKernel = False
-            if(is_shift_layer(layer)):
-                bSameAsKernel = False
-                inp = layer.input.name.replace(':','/').split('/')[0]
-                input_encoding = shift_list[inp]
-                if ("kernel" in var_name):
-                    weight_dec_shift = dec_bits
-                else:
-                    shift = input_encoding+weight_dec_shift-dec_bits
-                    if(shift < 0):
-                        bSameAsKernel = True
-            if(shift_list is None or bSameAsKernel):
-                # check if bias shift > weight shift, then reduce bias shift to weight shift	
-                if ("kernel" in var_name):
-                    weight_dec_shift = dec_bits	
-                else:	
-                    if(dec_bits > weight_dec_shift):	
-                        dec_bits = weight_dec_shift	
-                print("  new dec bit", dec_bits)
-
-            # convert to [-128,128) or int8
-            var_values = np.round(var_values * 2 ** dec_bits)
-            var_name = var_name.replace('/', '_')
-            var_name = var_name.replace(':', '_')
-            with open(name, 'a') as f:
-                f.write('#define ' + var_name.upper() + ' {')
-            # CHW format
-            if ('chw' in format):
-                if "dense" in var_name and "kernel" in var_name:
-                    transposed_wts = np.transpose(var_values)
-                    transposed_wts = convert_to_x4_q7_weights(
-                        np.reshape(transposed_wts, (transposed_wts.shape[0], transposed_wts.shape[1], 1, 1)))
-                # all other kernels, bias stay the same
-                else:
-                    transposed_wts = var_values
-            # HWC format
-            else:
-                if (len(var_values.shape) == 3):  # 1D convolution layer weights
-                    transposed_wts = np.transpose(var_values, (2, 0, 1))
-                elif (len(var_values.shape) == 4):  # 2D convolution layer weights
-                    transposed_wts = np.transpose(var_values, (3, 0, 1, 2))
-                else:  # fully connected layer weights or biases of any layer
-                    # test, use opt weight reorder
-                    if "dense" in var_name and "kernel" in var_name:
-                        transposed_wts = np.transpose(var_values)
-                        transposed_wts = convert_to_x4_q7_weights(np.reshape(transposed_wts ,(transposed_wts.shape[0], transposed_wts.shape[1], 1, 1)))
-                    else:
-                        transposed_wts = np.transpose(var_values)
-
-            print("  reshape to:",transposed_wts.shape)
-
-            with open(name, 'a') as f:
-                transposed_wts.tofile(f, sep=", ", format="%d")
-                f.write('}\n\n')
-                if ("bias" in var_name):
-                    f.write('#define ' + var_name.upper() + '_SHIFT ' + '(' + str(dec_bits) + ')\n\n\n')
-                if ("kernel" in var_name ):
-                    f.write('#define ' + var_name.upper() + '_SHIFT ' + '(' + str(dec_bits) + ')\n\n')
-            """
-            # for checking the quantised and dequantised range. 
-            with K.tf.Session() as session:
-                # convert back original range but quantized to 8-bits or 256 levels
-                var_values = var_values / (2 ** dec_bits)
-                var_values = session.run(K.tf.assign(var, var_values))
-                print('  '+var_name + ' number of wts/bias: ' + str(var_values.shape) + \
-                  ' dec bits: ' + str(dec_bits) + \
-                  ' max: (' + str(np.max(var_values)) + ',' + str(max_value) + ')' + \
-                  ' min: (' + str(np.min(var_values)) + ',' + str(min_value) + ')')
-            """
-
 def layers_output_ranges(model, x_test, quantize_method='max_min', calibrate_size=1000):
     # limit the test data size
     np.random.shuffle(x_test)
@@ -299,6 +57,7 @@ def layers_output_ranges(model, x_test, quantize_method='max_min', calibrate_siz
     last_layer = None
 
     for layer in L: # layer loop
+        print(layer.name)
         if("input" in layer.name):
             features = x_test
         else:
@@ -313,6 +72,7 @@ def layers_output_ranges(model, x_test, quantize_method='max_min', calibrate_siz
                 # as its inputs
                 pass
         #  calculate no saturation shift
+        #print(features)
         max_val = features.max()
         min_val = features.min()
         int_bits = int(np.ceil(np.log2(max(abs(max_val), abs(min_val)))))
@@ -414,22 +174,182 @@ def layers_output_ranges(model, x_test, quantize_method='max_min', calibrate_siz
     print("shift list", shift_list)
     return shift_list
 
+def image_to_cfile(data, label, num_of_image, file='image.h'):
+    with open(file, 'w') as f:
+        for i in range(num_of_image):
+            selected = np.random.randint(0, 1000) # select 10 out of 1000.
+            f.write('#define IMG%d {'% (i))
+            np.round(data[selected]).flatten().tofile(f, sep=", ", format="%d") # convert 0~1 to 0~127
+            f.write('} \n')
+            f.write('#define IMG%d_LABLE'% (i))
+            f.write(' %d \n \n' % label[selected])
+        f.write('#define TOTAL_IMAGE %d \n \n'%(num_of_image))
+
+        f.write('static const int8_t img[%d][%d] = {' % (num_of_image, data[0].flatten().shape[0]))
+        f.write('IMG0')
+        for i in range(num_of_image -1):
+            f.write(',IMG%d'%(i+1))
+        f.write('};\n\n')
+
+        f.write('static const int8_t label[%d] = {' % (num_of_image))
+        f.write('IMG0_LABLE')
+        for i in range(num_of_image -1):
+            f.write(',IMG%d_LABLE'%(i+1))
+        f.write('};\n\n')
+
+def convert_to_x4_q7_weights(weights):
+    [r, h, w, c] = weights.shape
+    weights = np.reshape(weights, (r, h*w*c))
+    num_of_rows = r
+    num_of_cols = h*w*c
+    new_weights = np.copy(weights)
+    new_weights = np.reshape(new_weights, (r*h*w*c))
+    counter = 0
+    for i in range(int(num_of_rows/4)):
+      # we only need to do the re-ordering for every 4 rows
+      row_base = 4*i
+      for j in range(int(num_of_cols/4)):
+        # for each 4 entries
+        column_base = 4*j
+        new_weights[counter]   =  weights[row_base  ][column_base  ]
+        new_weights[counter+1] =  weights[row_base+1][column_base  ]
+        new_weights[counter+2] =  weights[row_base  ][column_base+2]
+        new_weights[counter+3] =  weights[row_base+1][column_base+2]
+        new_weights[counter+4] =  weights[row_base+2][column_base  ]
+        new_weights[counter+5] =  weights[row_base+3][column_base  ]
+        new_weights[counter+6] =  weights[row_base+2][column_base+2]
+        new_weights[counter+7] =  weights[row_base+3][column_base+2]
+
+        new_weights[counter+8] =  weights[row_base  ][column_base+1]
+        new_weights[counter+9] =  weights[row_base+1][column_base+1]
+        new_weights[counter+10] = weights[row_base  ][column_base+3]
+        new_weights[counter+11] = weights[row_base+1][column_base+3]
+        new_weights[counter+12] = weights[row_base+2][column_base+1]
+        new_weights[counter+13] = weights[row_base+3][column_base+1]
+        new_weights[counter+14] = weights[row_base+2][column_base+3]
+        new_weights[counter+15] = weights[row_base+3][column_base+3]
+        counter = counter + 16
+      # the remaining ones are in order
+      for j in range((int)(num_of_cols-num_of_cols%4), int(num_of_cols)):
+        new_weights[counter] = weights[row_base][j]
+        new_weights[counter+1] = weights[row_base+1][j]
+        new_weights[counter+2] = weights[row_base+2][j]
+        new_weights[counter+3] = weights[row_base+3][j]
+        counter = counter + 4
+    return new_weights
+
+def generate_weights(model, name='weights.h', format='hwc', shift_list=None):
+    f = open(name , 'w')
+    f.write('#include "microinfer.h"\n\n')
+    f.close()
+
+    for curr_idx, layer in enumerate(model.layers):
+        if(not layer.weights):
+            continue
+        weight_dec_shift = 0
+        #遍历网络的每层，取参数值
+        print('weights for layer:' , layer.name)
+        for var in layer.weights:
+            var_name = str(var.name)
+            if("kernel" in var.name):
+                var_values = layer.get_weights()[0]
+                print("  weight: " , var_name)
+            elif("bias" in var_name):
+                var_values = layer.get_weights()[1]
+                print("  bias: " , var_name)
+            else:
+                continue
+            print("  original shape: ", var_values.shape)
+            #计算层参数的dec_bits
+            min_value = np.min(var_values)
+            max_value = np.max(var_values)
+            print("  weight min: " , min_value  , "  max:" , max_value)
+            int_bits = int(np.ceil(np.log2(max(abs(min_value), abs(max_value)))))
+            dec_bits = 7 - int_bits
+            print("  dec bit", dec_bits)
+            #计算层输出的shift
+            bSameAsKernel = False
+            if(is_shift_layer(layer)):
+                bSameAsKernel = False
+                inp = layer.input.name.replace(':','/').split('/')[0]
+                input_encoding = shift_list[inp]
+                if ("kernel" in var_name): #如果是卷积或者全连接层的weight参数
+                    weight_dec_shift = dec_bits
+                else: #如果是其他参数，比如bias
+                    print("test layer name:" , var.name)
+                    shift = input_encoding+weight_dec_shift-dec_bits #层的量化左移参数不能为负值
+                    if(shift < 0):
+                        bSameAsKernel = True 
+            if(shift_list is None or bSameAsKernel):
+                # check if bias shift > weight shift, then reduce bias shift to weight shift	
+                if ("kernel" in var_name):
+                    weight_dec_shift = dec_bits	
+                else:	
+                    if(dec_bits > weight_dec_shift):	
+                        dec_bits = weight_dec_shift	
+                print("  new dec bit", dec_bits)
+                       
+            # 执行int8量化，convert to [-128,128) or int8
+            var_values = np.round(var_values * 2 ** dec_bits)
+            var_name = var_name.replace('/', '_')
+            var_name = var_name.replace(':', '_')
+            with open(name, 'a') as f:
+                f.write('#define ' + var_name.upper() + ' {')
+            # CHW format，如果是kernel参数，则需要做矩阵转秩；如果是bias参数，则不用转秩
+            if ('chw' in format):
+                if "dense" in var_name and "kernel" in var_name:
+                    transposed_wts = np.transpose(var_values)
+                    transposed_wts = convert_to_x4_q7_weights(
+                        np.reshape(transposed_wts, (transposed_wts.shape[0], transposed_wts.shape[1], 1, 1)))
+                # all other kernels, bias stay the same
+                else:
+                    transposed_wts = var_values
+            # HWC format
+            else:
+                if (len(var_values.shape) == 3):  # 1D convolution layer weights
+                    transposed_wts = np.transpose(var_values, (2, 0, 1))
+                elif (len(var_values.shape) == 4):  # 2D convolution layer weights
+                    transposed_wts = np.transpose(var_values, (3, 0, 1, 2))
+                else:  # fully connected layer weights or biases of any layer
+                    # test, use opt weight reorder
+                    if "dense" in var_name and "kernel" in var_name:
+                        transposed_wts = np.transpose(var_values)
+                        transposed_wts = convert_to_x4_q7_weights(np.reshape(transposed_wts ,(transposed_wts.shape[0], transposed_wts.shape[1], 1, 1)))
+                    else:
+                        transposed_wts = np.transpose(var_values)
+
+            print("  reshape to:",transposed_wts.shape)
+            with open(name, 'a') as f:
+                transposed_wts.tofile(f, sep=", ", format="%d") #写入处理后的量化参数和参数本身的量化尺度
+                f.write('}\n\n')
+                if ("bias" in var_name):
+                    f.write('#define ' + var_name.upper() + '_SHIFT ' + '(' + str(dec_bits) + ')\n\n\n')
+                if ("kernel" in var_name ):
+                    f.write('#define ' + var_name.upper() + '_SHIFT ' + '(' + str(dec_bits) + ')\n\n')
+            
+
 def generate_model(model, x_test, name='weights.h', format='hwc', quantize_method='max_min'):
+    #预先遍历所有层的output值，计算每层的输出量化尺度
     shift_list = layers_output_ranges(model, x_test, quantize_method=quantize_method)
+    #根据已有模型，对进行解析，量化，计算出新的权重，并且生成量化偏移参数供算子计算
     generate_weights(model, name=name, format=format, shift_list=shift_list)
+
     if(type(model.layers[0]) != InputLayer):
         L = [model.input] + model.layers
     else:
         L = model.layers
     with open(name,'a') as fp:
+        #根据shift_list，生成每层的输出偏移量#define代码
         fp.write('\n/* output enconding for each layer */\n')
         for layer in L:
             if(type(model.input) == tf.Tensor and type(model.layers[0]) != InputLayer):
                 iname = layer.name.split(':')[0]
             else:
                 iname = layer.name
-            fp.write('#define %s_OUTPUT_SHIFT %s\n'%(iname.upper(), shift_list[iname]))
-        fp.write('\n/* bias shift and output shift for each layer */\n')
+            fp.write('#define %s_OUTPUT_SHIFT %s\n'%(iname.upper(), shift_list[iname]))    
+        #根据上一层的输出偏移量、kernel偏移量和本层的输出偏移量计算本层的右移计算参数
+        #根据上一层的输出偏移量、bias偏移量和本层的输出偏移量计算本层的左移计算参数
+        #根据以上的两个偏移量，可以计算出本层的量化后输出结果以及输出的偏移量（量化尺度）
         for layer in model.layers:
             if(is_shift_layer(layer)):
                 iname = layer.name.upper()
@@ -459,7 +379,7 @@ def generate_model(model, x_test, name='weights.h', format='hwc', quantize_metho
                     fp.write('#define {0}_OUTPUT_RSHIFT ({1}_OUTPUT_SHIFT*2-{0}_OUTPUT_SHIFT)\n'.format(
                             iname, inp))
                     fp.write('#if {0}_OUTPUT_RSHIFT < 0\n#error {0}_OUTPUT_RSHIFT must be bigger than 0\n#endif\n'.format(iname))
-
+    
         fp.write('\n/* weights for each layer */\n')
         LI = {}
         ID = 0
@@ -481,17 +401,19 @@ def generate_model(model, x_test, name='weights.h', format='hwc', quantize_metho
                 else:
                     LI[layer.name] = (ID, layer)
                 ID += 1
-
+            #将已经写入的层权重数组，和层右移参数或左移参数，共同作为层使用的参数结构
             if ('input' in layer.name or not layer.weights):
                 continue
             for var in layer.weights:
                 var_name = str(var.name).replace('/', '_').replace(':', '_')
                 if("kernel" in var_name):
                     fp.write('static const int8_t %s_weights[] = %s;\n'%(layer.name, var_name.upper()))
-                    fp.write('static const nnom_weight_t %s_w = { (const void*)%s_weights, %s_OUTPUT_RSHIFT};\n'%(layer.name,layer.name, layer.name.upper()))
+                    fp.write('static const microinfer_weight_t %s_w = { (const void*)%s_weights, %s_OUTPUT_RSHIFT};\n'%(layer.name,layer.name, layer.name.upper()))
                 elif("bias" in var_name):
                     fp.write('static const int8_t %s_bias[] = %s;\n'%(layer.name, var_name.upper()))
-                    fp.write('static const nnom_bias_t %s_b = { (const void*)%s_bias, %s_BIAS_LSHIFT};\n'%(layer.name,layer.name, layer.name.upper()))
+                    fp.write('static const microinfer_bias_t %s_b = { (const void*)%s_bias, %s_BIAS_LSHIFT};\n'%(layer.name,layer.name, layer.name.upper()))
+
+
         fp.write('\n/* nnom model */\n')
         # FIXME: now only support one input and one output
         sz = 1
@@ -709,137 +631,47 @@ def generate_model(model, x_test, name='weights.h', format='hwc', quantize_metho
         if(ID>32):
             fp.write('\tfree(layer);\n')
         fp.write('\treturn &model;\n}\n')
-    with open('.shift_list','w') as fp:
-        fp.write(str(shift_list))
-
-def evaluate_model(model, x_test, y_test, running_time=False, to_file='evaluation.txt'):
-    # Score trained model.
-    scores = model.evaluate(x_test, y_test, verbose=2)
-    print('Test loss:', scores[0])
-    print('Top 1:', scores[1])
-
-    if(len(y_test.shape)>1):
-        # predictions = model.predict(x_test)
-        # output = tf.keras.metrics.top_k_categorical_accuracy(y_test, predictions, k=2)
-        # # with tf.Session() as sess:
-        # #     result = sess.run(output)
-        # result =
-        # print("Top 2:",result)
-
-        predictions = model.predict(x_test)
-        matrix = metrics.confusion_matrix(y_test.argmax(axis=1), predictions.argmax(axis=1))
-        print(matrix)
-
-    run_time = 0
-    if running_time:
-        # try to calculate the time
-        T = time.time()
-        for i in range(10):
-            model.predict(x_test)
-        T = time.time() - T
-        run_time = round((T / 10 / x_test.shape[0] * 1000 * 1000), 2)
-        print("Runing time:",run_time , "us" )
-    #
-    with open(to_file, 'w') as f:
-        f.write("Runing time: "+ str(run_time) + "us" + "\n")
-        f.write('Test loss:'+ str(scores[0]) + "\n")
-        f.write('Top 1:'+ str(scores[1])+ "\n")
-        if (len(y_test.shape) > 1):
-            #f.write("Top 2:"+ str(result)+ "\n")
-            #f.write(str(matrix))
-            for row in matrix:
-                row.tofile(f, sep=',')
-                f.write("\n")
-
-    # try to check the weight and bias dec ranges
-    for layer in model.layers:
-        if (not layer.weights):
-            continue
-        for var in layer.weights:
-            var_name = str(var.name)
-            if ("kernel" in var_name):
-                var_values = layer.get_weights()[0]  # weight
-            else:
-                var_values = layer.get_weights()[1]  # bias
-            min_value = np.min(var_values)
-            max_value = np.max(var_values)
-            intt = int(np.ceil(np.log2(max(abs(min_value), abs(max_value)))))
-            dec = 7 - intt
-            print(var_name, "Dec num:", dec)
-    return scores
-
-def f2q(d, Q):
-    '''To convert a number from floating point to Qm.n format:
-        1. Multiply the floating point number by 2n
-        2. Round to the nearest integer
-    '''
-    return np.round(d*2**Q)
+    #with open('.shift_list','w') as fp:
+    #    fp.write(str(shift_list))
 
 
-def q2f(d, Q):
-    '''To convert a number from Qm.n format to floating point:
-        1. Convert the number to floating point as if it were an integer, in other words remove the binary point
-        2. Multiply by 2-n
-    '''
-    return d*2**-Q
 
-def show_weights(w, name):
-    sz = 1
-    for s in w.shape:
-        sz = sz*s
-    aL = w.reshape(sz,)
-    MIN,MAX=min(aL),max(aL)
-    Q = int(np.ceil(np.log2(max(abs(MIN),abs(MAX)))))
-    Q = 7-Q
-    qL = f2q(aL,Q)
-    qL = q2f(qL,Q)
-    plt.figure(figsize=(18, 3))  
-    plt.subplot(131)
-    plt.title(name)
-    plt.plot(aL)
-    plt.grid()
-    aL.sort()
-    plt.plot(aL,'r')
-    plt.grid()
-    plt.subplot(132)
-    plt.title('Q%s'%(Q))
-    qL.sort()
-    plt.plot(aL,'r')
-    plt.plot(qL,'g')
-    plt.grid()
-    plt.subplot(133)
-    plt.hist(aL,100)
-    plt.title('hist')
-    plt.grid()
-    plt.show()
 
-def compare(a,b,name):
-    sz = 1
-    for s in a.shape:
-        sz = sz*s
-    aL = a.reshape(sz,)
-    bL = b.reshape(sz,)
-    assert(len(aL) == len(bL))
-    Z = list(zip(aL,bL))
-    Z.sort(key=lambda x: x[0])
-    aL1,bL1=zip(*Z)
-    plt.figure(figsize=(18, 3))
-    plt.subplot(131)
-    plt.plot(aL)
-    plt.plot(aL1,'r')
-    plt.grid()
-    plt.title('tf-%s'%(name))
-    plt.subplot(133)
-    plt.plot(bL1,'g')
-    plt.plot(aL1,'r')
-    plt.grid()
-    plt.title('compare')
-    plt.subplot(132)
-    bL1=list(bL1)
-    bL1.sort()
-    plt.plot(bL)
-    plt.plot(bL1,'g')
-    plt.grid()
-    plt.title('nn-%s'%(name))
-    plt.show()
+"""
+epochs = 2
+num_classes = 10
+print("test keras tool")
+(x_train, y_train_num), (x_test, y_test_num) = mnist.load_data()
+# x_train是训练数据，是三维的数字图案方阵(编号，长，宽，灰度像素值)，y_train是训练数据的标签，表示是数字几
+print(x_train.shape[0], 'train samples') # 默认60000张训练数据
+print(x_test.shape[0], 'test samples') # 默认10000张测试数据
+y_train = tf.keras.utils.to_categorical(y_train_num, num_classes)
+y_test = tf.keras.utils.to_categorical(y_test_num, num_classes)
+#加一个维度，没什么实质的改变，因为本身就是单通道的灰度图，只是方便处理
+"""
+x_train = np.zeros((10, 49, 40),  dtype=float, order='C')
+x_test =  np.zeros((10, 49, 40),  dtype=float, order='C')
+x_train = x_train.reshape(x_train.shape[0], x_train.shape[1], x_train.shape[2], 1)
+x_test = x_test.reshape(x_test.shape[0], x_test.shape[1], x_test.shape[2], 1)
+print('x_train shape:', x_train.shape)
+#归一化操作
+x_test = x_test/255
+x_train = x_train/255
+print("data range", x_test.min(), x_test.max())
+#随机挑选十张图片，对归一化后的测试集数值乘10
+#image_to_cfile(x_test*127, y_test_num, 10, file='image.h')
 
+file_pb = "./speech"
+file_h5 = 'speech_model.h5'
+model = load_model("speech")
+loaded_model = tf.keras.models.load_model(file_pb)
+tf.keras.models.save_keras_model(loaded_model, file_h5)
+loaded_model_from_h5 = tf.keras.models.load_model(file_h5)
+
+model_name = "speech_model.h5"
+#从文件系统中加载模型
+model = load_model(model_name)
+model.summary()
+#生成weight.h头文件（模型量化+权重参数代码头文件生成）
+generate_model(model, np.vstack((x_train, x_test)), name="weights.h")
+#生成应用程序（模型初始化+模型编译+模型运行的API函数）

@@ -26,7 +26,7 @@ microinfer_status_t dense_build(microinfer_layer_t *layer)
 		layer->actail->tensor = layer->out->tensor;
 	}
 	// vec_buffer size: dim_vec (*2, q7->q15) ? I am not sure this is right
-	layer->comp->size = tensor_size(layer->in->tensor)*2;
+	layer->comp->size = tensor_size(layer->in->tensor);
 
 	// computational cost: In * out
 	//layer->stat.macc = tensor_size(layer->in->tensor) * tensor_size(layer->out->tensor);
