@@ -491,18 +491,22 @@ microinfer_status_t model_run(microinfer_model_t *m)
 
 microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, float *prob)
 {
-	int32_t max_val, max_index, sum;
-	int8_t *output;
-
 	if (!m)
 		return NN_ARGUMENT_ERROR;
 	model_run(m);
+	microinfer_output(m, label);
+	return NN_SUCCESS;
+}
 
+microinfer_status_t microinfer_output(microinfer_model_t *m, uint32_t *label)
+{
+	int32_t max_val, max_index, sum;
+	int8_t *output;
 	// get the output memory
 	output = m->tail->out->tensor->p_data;
 
 	// multiple neural output
-	if (tensor_size(m->tail->out->tensor) > 1)
+	if (tensor_size(m->tail->out->tensor) > 0)
 	{
 		// Top 1
 		max_val = output[0];
@@ -519,19 +523,6 @@ microinfer_status_t microinfer_predict(microinfer_model_t *m, uint32_t *label, f
 		}
 		// send results
 		*label = max_index;
-		if(max_val !=0)
-			*prob = (float)max_val/127.f; 
-		else
-			*prob = 0; 
-	}
-	// single neural output
-	else
-	{
-		*prob = (float)output[0] / 127.f;
-		if (*prob >= 0.5f)
-			*label = 1;
-		else
-			*label = 0;
 	}
 	
 	return NN_SUCCESS;
